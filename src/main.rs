@@ -6,6 +6,9 @@ use std::sync::Arc;
 use std::cmp::min;
 use std::string::FromUtf8Error;
 use std::str;
+use std::net::{IpAddr};
+use std::error::Error;
+use std::time::{Duration, Instant};
 
 const GAME_HEADER: &[u8] = b"Hock";
 
@@ -27,6 +30,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Store client addresses and their corresponding buffers
     let clients: Arc<Mutex<HashMap<SocketAddr, Vec<u8>>>> = Arc::new(Mutex::new(HashMap::new()));
 
+    let reqwest_client = reqwest::Client::new();
+    let master_socket = Arc::clone(&proxy_socket);
+    tokio::spawn(async move {
+            loop {
+                let master_server = get_master_server(&reqwest_client).await.ok();
+                if let Some(addr) = master_server {
+                    for _ in 0..60 {
+                        let msg = b"Hock\x20";
+                        let ps = master_socket.clone();
+                        let res = ps.send_to(msg, addr).await;
+                        if res.is_err() {
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_secs(10)).await;
+                    }
+                } else {
+                    tokio::time::sleep(Duration::from_secs(15)).await;
+                }
+            }
+    });
+
     loop {
         let mut buf = [0; 1024];
         let (len, client_addr) = proxy_socket.recv_from(&mut buf).await?;
@@ -42,6 +66,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             handle_client(proxy_socket, dest_socket, clients, client_addr, &buf[..len]).await;
         });
     }
+}
+
+async fn get_master_server(client: &reqwest::Client) -> Result<SocketAddr, Box<dyn Error>> {
+    let s = client
+        .get("https://sam2.github.io/HQMMasterServerEndpoint/")
+        .send()
+        .await?
+        .text()
+        .await?;
+
+    let split = s.split_ascii_whitespace().collect::<Vec<&str>>();
+
+    let addr = split.get(1).unwrap_or(&"").parse::<IpAddr>()?;
+    let port = split.get(2).unwrap_or(&"").parse::<u16>()?;
+    Ok(SocketAddr::new(addr, port))
 }
 
 async fn handle_client(
