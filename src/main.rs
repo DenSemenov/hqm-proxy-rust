@@ -12,7 +12,7 @@ const GAME_HEADER: &[u8] = b"Hock";
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Addresses
-    let proxy_addr: SocketAddr = "0.0.0.0:27585".parse()?;
+    let proxy_addr: SocketAddr = "0.0.0.0:27590".parse()?;
     let dest_addr: SocketAddr = "85.143.172.20:27585".parse()?;
 
     // Create a UDP socket for the proxy
